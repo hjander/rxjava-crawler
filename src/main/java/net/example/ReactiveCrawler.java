@@ -35,9 +35,6 @@ import rx.functions.Action1;
 import rx.functions.Func1;
 import rx.schedulers.Schedulers;
 
-import javax.ws.rs.core.GenericType;
-import javax.ws.rs.core.Response;
-
 /**
  * Created by jah on 12/25/15.
  */
