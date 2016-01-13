@@ -2,10 +2,7 @@ package net.example;
 
 import com.mongodb.ServerAddress;
 import com.mongodb.async.client.MongoClientSettings;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.FindOneAndUpdateOptions;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.UpdateOptions;
+import com.mongodb.client.model.*;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.connection.ClusterSettings;
 import com.mongodb.connection.ConnectionPoolSettings;
@@ -26,8 +23,8 @@ import rx.schedulers.Schedulers;
 
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -95,7 +92,7 @@ public class ReactiveCrawler {
 	}
 
 	
-	static public Observable<UpdateResult> persist(MongoCollection<Document> linkCollection, Document linkDoc, List<Document> documents) {
+	static public Observable<UpdateResult> persist(MongoCollection<Document> linkCollection, Document linkDoc, Set<Document> documents) {
 
 		Func1<Document, Observable<UpdateResult>> insert =
 				doc -> linkCollection.updateOne(
@@ -106,7 +103,8 @@ public class ReactiveCrawler {
 		return Observable.from(documents).flatMap(insert)
 				.onBackpressureDrop(updateResult1 -> System.out.printf("BACKPESSURE"))
 				.doOnNext(updateResult ->
-						System.out.printf("%s Persisted %d out of %d  %n", Thread.currentThread().getName(), updateResult.getMatchedCount(), documents.size()));
+						System.out.printf("%s Persisting Document: %s , inserted: %b %n",
+								Thread.currentThread(), linkDoc.getString(FIELD_NAME_URL), updateResult.getMatchedCount()==0));
 
 	}
 
@@ -129,17 +127,20 @@ public class ReactiveCrawler {
 			collection.deleteMany(new Document()).toBlocking().single();
 		}
 
+		collection.createIndex(new Document(FIELD_NAME_URL, 1), new IndexOptions().unique(true).background(true))
+				.toBlocking().single();
+
 		return collection;
 	}
 
 
-	static public List<Document> linksAsDocuments(List<HtmlLinkExtractor.HtmlLink> links) {
+	static public Set<Document> linksAsDocuments(Set<HtmlLinkExtractor.HtmlLink> links) {
 
 		return links.stream()
 				.filter(link -> link.getLink().startsWith("http://"))
-				.collect(ArrayList::new,
-						(list, link) -> list.add(new Document("url", link.getLink()).append("linktext", link.getLinkText())),
-						ArrayList::addAll);
+				.collect(HashSet::new,
+						(set, link) -> set.add(new Document("url", link.getLink()).append("linktext", link.getLinkText())),
+						HashSet::addAll);
 	}
 
 
