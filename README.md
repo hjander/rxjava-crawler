@@ -18,7 +18,7 @@ run `net.example.ReactiveCrawler.main()`
 
 #### see running containers
 
-run `docker ps``
+run `docker ps`
 
 
 #### read the mongo logs
@@ -28,7 +28,7 @@ run `docker ps``
 
 #### run all tests (starts and stops the mongo-docker container)
 
-`mvn verify``
+`mvn verify`
 
 
 #### clean up (in case of unexpected docker problems)
