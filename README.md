@@ -1,4 +1,4 @@
-# rxjava maven docker toy example
+# crawler with rxjava maven docker as toy example
 
 
 #### prerequisites
@@ -11,9 +11,19 @@ working docker/docker-machine installation
 `mvn docker:start`
 
 
-#### stop with
+#### start the crawler
 
-`CTRL+C`
+run `net.example.ReactiveCrawler.main()`
+
+
+#### see running containers
+
+run `docker ps``
+
+
+#### read the mongo logs
+
+`docker logs --tail="all" $MONGO_CONTAINER_ID`
 
 
 #### run all tests (starts and stops the mongo-docker container)
