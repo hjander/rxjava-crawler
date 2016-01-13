@@ -46,7 +46,7 @@ public class ReactiveCrawler {
 
 		CountDownLatch cl = new CountDownLatch(1);
 
-		RxClient<RxObservableInvoker> client = RxObservable.newClient(Executors.newFixedThreadPool(64));
+		RxClient<RxObservableInvoker> client = RxObservable.newClient(Executors.newFixedThreadPool(32));
 		MongoCollection<Document> linkCollection = setupLinkCollection();
 
 		//String initialLink = "http://localhost:8888/testImgTagBasicAuth.html";
@@ -55,7 +55,7 @@ public class ReactiveCrawler {
 		linkCollection.insertOne(new Document("url", initialLink)).toBlocking().single();
 
 		
-		Observable.interval(500, TimeUnit.MILLISECONDS)
+		Observable.interval(200, TimeUnit.MILLISECONDS).onBackpressureBlock()
 			.flatMap(tick -> links(linkCollection))
 				.flatMap(linkDoc -> httpGet(client, linkDoc)
 						.map(HtmlLinkExtractor::parseLinks).map(ReactiveCrawler::linksAsDocuments).subscribeOn(Schedulers.computation())
@@ -75,7 +75,11 @@ public class ReactiveCrawler {
 				.property(ClientProperties.FOLLOW_REDIRECTS, Boolean.TRUE)
 				.request().rx().get(Response.class)
 				.filter(response -> response.getHeaderString(HttpHeaders.CONTENT_TYPE).contains("html"))
-				.map(htmlResponse -> htmlResponse.readEntity(String.class)).onExceptionResumeNext(Observable.<String>empty());
+				.map(htmlResponse -> htmlResponse.readEntity(String.class))
+				.onErrorResumeNext(throwable -> {
+					System.out.printf("Error:"+throwable.getMessage());
+					return Observable.<String>empty();
+				});
 
 	}
 
@@ -103,8 +107,12 @@ public class ReactiveCrawler {
 		return Observable.from(documents).flatMap(insert)
 				.onBackpressureDrop(updateResult1 -> System.out.printf("BACKPESSURE"))
 				.doOnNext(updateResult ->
-						System.out.printf("%s Persisting Document: %s , inserted: %b %n",
-								Thread.currentThread(), linkDoc.getString(FIELD_NAME_URL), updateResult.getMatchedCount()==0));
+						System.out.printf("%s Persisting Document id: %s , inserted: %b %n",
+								Thread.currentThread(), updateResult.getUpsertedId(), updateResult.getMatchedCount() == 0))
+				.onErrorResumeNext(throwable -> {
+					System.out.printf("Error:" + throwable.getMessage());
+					return Observable.empty();
+				});
 
 	}
 
@@ -113,8 +121,8 @@ public class ReactiveCrawler {
 
 		ClusterSettings clusterSettings = ClusterSettings.builder()
 				.hosts(asList(new ServerAddress("192.168.99.105:27017"))).build();
-		ConnectionPoolSettings connectionPoolSettings = ConnectionPoolSettings.builder().maxSize(500)
-				.maxWaitQueueSize(10000).build();
+		ConnectionPoolSettings connectionPoolSettings = ConnectionPoolSettings.builder().maxSize(100)
+				.maxWaitQueueSize(100000).build();
 
 		MongoClientSettings settings = MongoClientSettings.builder().clusterSettings(clusterSettings)
 				.connectionPoolSettings(connectionPoolSettings).build();
