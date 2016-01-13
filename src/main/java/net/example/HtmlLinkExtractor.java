@@ -1,10 +1,9 @@
 package net.example;
 
-import org.bson.Document;
-
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,11 +22,11 @@ class HtmlLinkExtractor {
      *            html content for validation
      * @return List links and link text
      */
-    public static List<HtmlLink> parseLinks(final String html) {
+    public static Set<HtmlLink> parseLinks(final String html) {
 
         if(html != null){
 	        
-	    	List<HtmlLink> result = new ArrayList<HtmlLink>();
+	    	Set<HtmlLink> result = new HashSet<>();
 	    	
 	        Matcher matcherTag, matcherLink;
 	        matcherTag = patternTag.matcher(html);
@@ -47,7 +46,7 @@ class HtmlLinkExtractor {
 
 	        return (result);
 	    }else{
-            return Collections.emptyList();
+            return Collections.emptySet();
 	    }
     }
 
@@ -91,5 +90,18 @@ class HtmlLinkExtractor {
             return link;
         }
 
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            HtmlLink htmlLink = (HtmlLink) o;
+            return Objects.equals(link, htmlLink.link) &&
+                    Objects.equals(linkText, htmlLink.linkText);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(link, linkText);
+        }
     }
 }
