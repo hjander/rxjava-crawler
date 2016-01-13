@@ -53,16 +53,17 @@ public class ReactiveCrawler {
 		MongoCollection<Document> linkCollection = setupLinkCollection();
 
 		//String initialLink = "http://localhost:8888/testImgTagBasicAuth.html";
-		String initialLink = "http://www.zeit.de/index";
+		String initialLink = "http://www.faz.de";
 
 		linkCollection.insertOne(new Document("url", initialLink)).toBlocking().single();
 
 		
-		Observable.interval(100, TimeUnit.MILLISECONDS)
+		Observable.interval(500, TimeUnit.MILLISECONDS)
 			.flatMap(tick -> links(linkCollection))
 				.flatMap(linkDoc -> httpGet(client, linkDoc)
 						.map(HtmlLinkExtractor::parseLinks).map(ReactiveCrawler::linksAsDocuments).subscribeOn(Schedulers.computation())
-						.flatMap(docs -> persist(linkCollection, linkDoc, docs))).subscribeOn(Schedulers.io()).subscribe();
+						.flatMap(docs -> persist(linkCollection, linkDoc, docs)))//.subscribeOn(Schedulers.io())
+				.subscribe();
 
 		cl.await();
 	}
@@ -85,11 +86,12 @@ public class ReactiveCrawler {
 
 	static public Observable<Document> links(MongoCollection<Document> linkCollection) {
 
-		System.out.printf("%s Providing next link%n", Thread.currentThread());
-
 		return linkCollection.findOneAndUpdate(Filters.ne("status", "DONE"),
 				new Document("$set", new Document("status", "DONE")),
-				new FindOneAndUpdateOptions().sort(Sorts.ascending(FIELD_NAME_URL)));
+				new FindOneAndUpdateOptions().sort(Sorts.ascending(FIELD_NAME_URL)))
+					.doOnNext(document -> {
+						System.out.printf("%s Next Link: %s %n", Thread.currentThread(), document.getString(FIELD_NAME_URL));
+					});
 	}
 
 	
@@ -113,7 +115,7 @@ public class ReactiveCrawler {
 
 		ClusterSettings clusterSettings = ClusterSettings.builder()
 				.hosts(asList(new ServerAddress("192.168.99.105:27017"))).build();
-		ConnectionPoolSettings connectionPoolSettings = ConnectionPoolSettings.builder().maxSize(800)
+		ConnectionPoolSettings connectionPoolSettings = ConnectionPoolSettings.builder().maxSize(500)
 				.maxWaitQueueSize(10000).build();
 
 		MongoClientSettings settings = MongoClientSettings.builder().clusterSettings(clusterSettings)
