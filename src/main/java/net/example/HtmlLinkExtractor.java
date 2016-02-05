@@ -1,5 +1,7 @@
 package net.example;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Objects;
@@ -40,8 +42,13 @@ class HtmlLinkExtractor {
 	
 	            while (matcherLink.find()) {
 	                String link = matcherLink.group(1); // link
-	                result.add(new HtmlLink(link.replaceAll("\"", ""), linkText));
-	            }
+
+                    try {
+                        result.add(new HtmlLink(link, linkText));
+                    } catch (MalformedURLException e) {
+                        System.out.printf("WARN: %s is not a valid URL and will be skipped%n", link);
+                    }
+                }
 	        }
 
 	        return (result);
@@ -53,12 +60,11 @@ class HtmlLinkExtractor {
 
     static class HtmlLink {
 
-        private String link;
+        private URL link;
         private String linkText;
-
        
-        HtmlLink(String link, String linkText) {
-			this.link = link;
+        HtmlLink(String link, String linkText) throws MalformedURLException {
+			this.link = new URL( replaceInvalidChar(link) );
 			this.linkText = linkText;
 		}
 
@@ -68,20 +74,11 @@ class HtmlLinkExtractor {
                     .toString();
         }
 
-        public String getLink() {
+        public URL getLink() {
             return link;
         }
-
-        public void setLink(String link) {
-            this.link = replaceInvalidChar(link);
-        }
-
         public String getLinkText() {
             return linkText;
-        }
-
-        public void setLinkText(String linkText) {
-            this.linkText = linkText;
         }
 
         private String replaceInvalidChar(String link) {
@@ -90,6 +87,7 @@ class HtmlLinkExtractor {
             return link;
         }
 
+        // because we use a Set
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;

@@ -5,6 +5,8 @@ import org.junit.Test;
 import junit.framework.TestCase;
 import net.example.HtmlLinkExtractor.HtmlLink;
 
+import java.net.MalformedURLException;
+
 import static org.assertj.core.api.Assertions.*;
 /**
  * Example Tests
@@ -18,7 +20,7 @@ public class HtmlLinkExtractorTest extends TestCase {
 	}
 
 	@Test
-	public void testEmpty(){
+	public void testEmpty() throws MalformedURLException {
 		
 		assertThat( HtmlLinkExtractor.parseLinks("<a href=  >Heise</a>") )
 		.isNotNull().isEmpty();
@@ -54,7 +56,7 @@ public class HtmlLinkExtractorTest extends TestCase {
 	
 	
 	@Test
-	public void testValidInput(){
+	public void testValidInput() throws MalformedURLException {
 				
 		assertThat( HtmlLinkExtractor.parseLinks("<a href=www.heise.de>Heise</a>") )
 			.isNotNull().hasSize(1).usingFieldByFieldElementComparator().containsExactly(new HtmlLink("www.heise.de", "Heise"));
