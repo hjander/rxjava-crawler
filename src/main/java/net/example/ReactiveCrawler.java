@@ -120,19 +120,18 @@ public class ReactiveCrawler {
 
 
         return Observable.from(linkedDocuments).flatMap(upsertDoc)
-                .doOnNext(updateResult ->
-                        System.out.printf("%s Persisting Document id: %s , inserted: %s %n ackknowledged: %s",
-                                Thread.currentThread(), updateResult.getUpsertedId(),
-                                updateResult.getMatchedCount() == 0, updateResult.wasAcknowledged()))
+//              .doOnNext(updateResult -> System.out.printf("%s Persisting Document id: %s , inserted: %s %n",
+//                                Thread.currentThread(), updateResult.getUpsertedId(),
+//                                updateResult.getMatchedCount() == 0))
 
+                .doOnError(throwable -> linkCollection.updateOne(
+                                new Document(FIELD_NAME_URL, parentDoc.getString(FIELD_NAME_URL)),
+                                new Document(FIELD_NAME_STATUS, CrawlStatus.ERROR))
+                )
                 .onErrorResumeNext(throwable -> {
                     System.out.printf("Error: %s", throwable.getMessage());
                     return Observable.empty();
                 })
-                .doOnError(throwable -> linkCollection.updateOne(
-                        new Document(FIELD_NAME_URL, parentDoc.getString(FIELD_NAME_URL)),
-                        new Document(FIELD_NAME_STATUS, CrawlStatus.ERROR)))
-
                 .doOnCompleted(() -> linkCollection.updateOne(
                                 new Document(FIELD_NAME_URL, parentDoc.getString(FIELD_NAME_URL)),
                                 new Document(FIELD_NAME_STATUS, CrawlStatus.OK))
