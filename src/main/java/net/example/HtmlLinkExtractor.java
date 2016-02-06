@@ -9,6 +9,12 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Encapsulates the logic to a given HTML document into a Set<URL>.
+ *
+ * This involves parsing, cleaning, resolving relative URLs and HTML anchors.
+ *
+ */
 class HtmlLinkExtractor {
 
     private static final String HTML_A_TAG_PATTERN = "(?i)<a([^>]+)>(.+?)</a>";
@@ -20,11 +26,12 @@ class HtmlLinkExtractor {
     /**
      * Validate html with regular expression
      *
-     * @param html
-     *            html content for validation
-     * @return List links and link text
+     * @param html - retrieved document
+     * @param baseUrl - of the given document
+     *
+     * @return Set<HtmlLink> of crawlable links
      */
-    public static Set<HtmlLink> parseLinks(final String html) {
+    public static Set<HtmlLink> parseLinks(final String html, String baseUrl) {
 
         if(html != null){
 	        
@@ -44,7 +51,11 @@ class HtmlLinkExtractor {
 	                String link = matcherLink.group(1); // link
 
                     try {
+                        link = canonicalize(baseUrl, link);
+                        if (link == null) continue;
+
                         result.add(new HtmlLink(link, linkText));
+
                     } catch (MalformedURLException e) {
                         System.out.printf("WARN: %s is not a valid URL and will be skipped%n", link);
                     }
@@ -57,14 +68,28 @@ class HtmlLinkExtractor {
 	    }
     }
 
+    private static String canonicalize(String url, String link) {
+        link = HtmlLink.replaceInvalidChar(link).trim();
+
+        if(link.equals(""))
+            return null;
+
+        if(link.contains("#"))
+            link = link.substring(0, link.indexOf('#'));
+
+        if(link.startsWith("/") && link.length() > 1)
+            link = url + link;
+        return link;
+    }
+
 
     static class HtmlLink {
 
         private URL link;
         private String linkText;
        
-        HtmlLink(String link, String linkText) throws MalformedURLException {
-			this.link = new URL( replaceInvalidChar(link) );
+        HtmlLink(String linkStr, String linkText) throws MalformedURLException {
+			this.link = new URL( linkStr );
 			this.linkText = linkText;
 		}
 
@@ -81,7 +106,7 @@ class HtmlLinkExtractor {
             return linkText;
         }
 
-        private String replaceInvalidChar(String link) {
+        private static String replaceInvalidChar(String link) {
             link = link.replaceAll("'", "");
             link = link.replaceAll("\"", "");
             return link;
