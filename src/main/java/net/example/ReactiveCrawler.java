@@ -64,7 +64,8 @@ public class ReactiveCrawler {
         Observable.interval(200, TimeUnit.MILLISECONDS).onBackpressureBlock()
                 .flatMap(tick -> links(linkCollection))
                 .flatMap(linkDoc -> httpGet(client, linkDoc)
-                        .map(HtmlLinkExtractor::parseLinks).map(ReactiveCrawler::linksAsDocuments)//.subscribeOn(Schedulers.computation())
+                        .map(html -> HtmlLinkExtractor.parseLinks(html, linkDoc.getString(FIELD_NAME_URL)))
+                        .map(ReactiveCrawler::linksAsDocuments)
                         .flatMap(docs -> persist(linkCollection, linkDoc, docs)))//.subscribeOn(Schedulers.io())
                 .subscribe();
 
