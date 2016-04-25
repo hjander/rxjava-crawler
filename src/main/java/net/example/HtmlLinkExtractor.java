@@ -27,11 +27,13 @@ class HtmlLinkExtractor {
      * Validate html with regular expression
      *
      * @param html - retrieved document
-     * @param baseUrl - of the given document
+     * @param srcUrl - of the given document
      *
      * @return Set<HtmlLink> of crawlable links
      */
-    public static Set<HtmlLink> parseLinks(final String html, String baseUrl) {
+    public static Set<HtmlLink> parseLinks(final String html, URL srcUrl) {
+
+        String baseUrl = srcUrl.getHost() +  "://" + srcUrl.getAuthority();
 
         if(html != null){
 	        
@@ -71,11 +73,11 @@ class HtmlLinkExtractor {
     private static String canonicalize(String url, String link) {
         link = HtmlLink.replaceInvalidChar(link).trim();
 
-        if(link.equals(""))
-            return null;
-
         if(link.contains("#"))
             link = link.substring(0, link.indexOf('#'));
+
+        if(link.equals(""))
+            return null;
 
         if(link.startsWith("/") && link.length() > 1)
             link = url + link;

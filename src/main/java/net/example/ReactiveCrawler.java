@@ -20,6 +20,7 @@ import rx.Notification;
 import rx.Observable;
 import rx.functions.Action1;
 import rx.functions.Func1;
+import rx.schedulers.Schedulers;
 
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
@@ -33,13 +34,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.Arrays.asList;
+import static net.example.UrlDocument.FIELD_NAME_URL_HOST;
+import static net.example.UrlDocument.FIELD_NAME_URL_PATH;
 
 /**
  * @author Hendrik Jander
  */
 public class ReactiveCrawler {
 
-    public static final String FIELD_NAME_URL = "url";
+
     public static final String FIELD_NAME_STATUS = "status";
 
     public static final String HOST = "192.168.99.100:27017";
@@ -57,16 +60,15 @@ public class ReactiveCrawler {
         MongoCollection<Document> linkCollection = setupLinkCollection();
 
         URL initialLink = new URL("http://www.zeit.de/index");
-
-        linkCollection.insertOne(new Document(FIELD_NAME_URL, initialLink.toExternalForm())).toBlocking().single();
-
+        linkCollection.insertOne(UrlDocument.asDocument(initialLink)).toBlocking().single();
 
         Observable.interval(200, TimeUnit.MILLISECONDS).onBackpressureBlock()
                 .flatMap(tick -> links(linkCollection))
-                .flatMap(linkDoc -> httpGet(client, linkDoc)
-                        .map(html -> HtmlLinkExtractor.parseLinks(html, linkDoc.getString(FIELD_NAME_URL)))
-                        .map(ReactiveCrawler::linksAsDocuments)
-                        .flatMap(docs -> persist(linkCollection, linkDoc, docs)))//.subscribeOn(Schedulers.io())
+                .flatMap(linkDoc -> httpGet(client, linkDoc).observeOn(Schedulers.computation())
+                        .map(html -> HtmlLinkExtractor.parseLinks(html, UrlDocument.asUrl(linkDoc)))
+                        .map(ReactiveCrawler::linksAsDocuments).observeOn(Schedulers.io())
+                        .flatMap(docs -> persist(linkCollection, linkDoc, docs)))
+                .subscribeOn(Schedulers.io())
                 .subscribe();
 
         cl.await();
@@ -75,10 +77,11 @@ public class ReactiveCrawler {
 
     static Observable<String> httpGet(RxClient<RxObservableInvoker> client, Document toCrawl) {
 
-        System.out.printf("%s Getting document %s%n", Thread.currentThread(), toCrawl.getString(FIELD_NAME_URL));
+        URL targetUrl = UrlDocument.asUrl(toCrawl);
+        System.out.printf("%s Getting document %s%n", Thread.currentThread(), targetUrl);
 
         return client
-                .target(toCrawl.getString(FIELD_NAME_URL))
+                .target(targetUrl.toExternalForm())
                 .property(ClientProperties.FOLLOW_REDIRECTS, Boolean.TRUE)
                 .request().rx().get(Response.class)
 
@@ -96,11 +99,11 @@ public class ReactiveCrawler {
 
         Bson documentNotInProgressFilter = Filters.ne(FIELD_NAME_STATUS, CrawlStatus.PROGRESS.name());
         Document setDocumentInProgress = new Document("$set", new Document(FIELD_NAME_STATUS, CrawlStatus.PROGRESS.name()));
-        FindOneAndUpdateOptions foo = new FindOneAndUpdateOptions().sort(Sorts.ascending(FIELD_NAME_URL));
+        FindOneAndUpdateOptions foo = new FindOneAndUpdateOptions().sort(Sorts.ascending(FIELD_NAME_URL_HOST, FIELD_NAME_URL_PATH));
 
         return linkCollection.findOneAndUpdate(documentNotInProgressFilter, setDocumentInProgress, foo)
                 .doOnNext(document -> {
-                    System.out.printf("%s Next Link: %s %n", Thread.currentThread(), document.getString(FIELD_NAME_URL));
+                  System.out.printf("%s Next Link: %s %n", Thread.currentThread(), UrlDocument.asUrl(document).toExternalForm());
                 })
                 .doOnError(throwable -> {
                     System.out.printf("ERROR %s", throwable.getMessage());
@@ -111,22 +114,27 @@ public class ReactiveCrawler {
 
     static public Observable<UpdateResult> persist(MongoCollection<Document> linkCollection, Document parentDoc, Set<Document> linkedDocuments) {
 
+        System.out.printf("ParentDoc  %s", parentDoc);
+
         Func1<Document, Observable<UpdateResult>> upsertDoc =
                 doc -> linkCollection.updateOne(
-                            Filters.eq(FIELD_NAME_URL, doc.getString(FIELD_NAME_URL)),
-                            new Document("$set", doc)
-                                .append("$currentDate", new Document("gathered", new Document("$type", "timestamp")))
-                                .append("$addToSet", new Document("incoming", parentDoc.getString(FIELD_NAME_URL))),
-                            new UpdateOptions().upsert(true));
+                          Filters.and(
+                                  Filters.eq(FIELD_NAME_URL_HOST, doc.getString(FIELD_NAME_URL_HOST)),
+                                  Filters.eq(FIELD_NAME_URL_PATH, doc.getString(FIELD_NAME_URL_PATH))),
+                          new Document("$set", doc)
+                                  .append("$currentDate", new Document("gathered", new Document("$type", "timestamp")))
+                                  .append("$addToSet", new Document("incoming", parentDoc.getString(FIELD_NAME_URL_HOST))),
+                          new UpdateOptions().upsert(true));
 
 
         return Observable.from(linkedDocuments).flatMap(upsertDoc)
-//              .doOnNext(updateResult -> System.out.printf("%s Persisting Document id: %s , inserted: %s %n",
-//                                Thread.currentThread(), updateResult.getUpsertedId(),
-//                                updateResult.getMatchedCount() == 0))
+                .doOnNext(updateResult -> System.out.printf("%s Persisting Document id: %s , inserted: %s %n",
+                                Thread.currentThread(), updateResult.getUpsertedId(),
+                                updateResult.getMatchedCount() == 0))
 
                 .doOnError(throwable -> linkCollection.updateOne(
-                                new Document(FIELD_NAME_URL, parentDoc.getString(FIELD_NAME_URL)),
+                                new Document(FIELD_NAME_URL_HOST, parentDoc.getString(FIELD_NAME_URL_HOST))
+                                        .append(FIELD_NAME_URL_PATH, parentDoc.getString(FIELD_NAME_URL_PATH)),
                                 new Document(FIELD_NAME_STATUS, CrawlStatus.ERROR))
                 )
                 .onErrorResumeNext(throwable -> {
@@ -134,13 +142,14 @@ public class ReactiveCrawler {
                     return Observable.empty();
                 })
                 .doOnCompleted(() -> linkCollection.updateOne(
-                                new Document(FIELD_NAME_URL, parentDoc.getString(FIELD_NAME_URL)),
+                                new Document(FIELD_NAME_URL_HOST, parentDoc.getString(FIELD_NAME_URL_HOST))
+                                        .append(FIELD_NAME_URL_PATH, parentDoc.getString(FIELD_NAME_URL_PATH)),
                                 new Document(FIELD_NAME_STATUS, CrawlStatus.OK))
                 );
     }
 
 
-    private static MongoCollection<Document> setupLinkCollection() {
+  static private MongoCollection<Document> setupLinkCollection() {
 
         ClusterSettings clusterSettings = ClusterSettings.builder()
                 .hosts(asList(new ServerAddress(HOST))).build();
@@ -160,19 +169,22 @@ public class ReactiveCrawler {
             collection.deleteMany(new Document()).toBlocking().single();
         }
 
-        collection.createIndex(new Document(FIELD_NAME_URL, 1), new IndexOptions().unique(true).background(true))
+        collection.createIndex(
+                new Document(FIELD_NAME_URL_HOST, 1).append(FIELD_NAME_URL_PATH, 1),
+                new IndexOptions().unique(true).background(true))
                 .toBlocking().single();
 
         return collection;
     }
 
 
-    static public Set<Document> linksAsDocuments(Set<HtmlLinkExtractor.HtmlLink> links) {
+    static Set<Document> linksAsDocuments(Set<HtmlLinkExtractor.HtmlLink> links) {
 
         return links.stream()
                 .filter(link -> link.getLink().getProtocol().equals("http"))
                 .collect(HashSet::new,
-                        (set, link) -> set.add(new Document(FIELD_NAME_URL, link.getLink().toExternalForm()).append("linktext", link.getLinkText())),
+                        (set, link) -> set.add(
+                                UrlDocument.asDocument(link.getLink()).append("linktext", link.getLinkText())),
                         HashSet::addAll);
 
     }

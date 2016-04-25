@@ -1,18 +1,25 @@
 package net.example;
 
-import junit.framework.TestCase;
 import net.example.HtmlLinkExtractor.HtmlLink;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.net.MalformedURLException;
+import java.net.URL;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 /**
  * Example Tests
  */
-public class HtmlLinkExtractorTest extends TestCase {
+public class HtmlLinkExtractorTest {
 
-	private final static String BASE_URL = "http://www.home.de";
+	private static URL BASE_URL;
+
+	@Before
+	public void  before() throws MalformedURLException {
+		BASE_URL = new URL("http://www.home.de");
+	}
 
 	@Test
 	public void testNull(){
